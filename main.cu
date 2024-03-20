@@ -18,7 +18,7 @@ __global__ void block_matching(int* ref_frame, int* curr_frame, int width, int h
     int ix = blockIdx.x * blockDim.x + threadIdx.x;
     int iy = blockIdx.y * blockDim.y + threadIdx.y;
 
-    
+
 }
 
 // usage: main.cu <video file> <WIDTH> <HEIGHT> <BLK_size> <search range>
