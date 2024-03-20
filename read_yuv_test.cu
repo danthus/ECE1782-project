@@ -40,6 +40,10 @@ int main()
         printf("%hhu ", ref_frame[i]);
     }
     printf("\n");
+
+    FILE* write_file;
+    write_file = fopen("y_frames/test_frame", "wb");
+    fwrite(ref_frame, 1, frame_bytes, write_file);
     
 
     free(ref_frame);
