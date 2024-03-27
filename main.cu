@@ -13,11 +13,51 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
     if (abort) exit(code);
 }
 
-__global__ void block_matching(int* ref_frame, int* curr_frame, int width, int height, int blk_size, int srch_range)
+__global__ void block_matching(int* ref_frame, int* curr_frame, int* mv, int width, int height, int blk_size, int srch_range)
 {
     int ix = blockIdx.x * blockDim.x + threadIdx.x;
     int iy = blockIdx.y * blockDim.y + threadIdx.y;
 
+    int SAD = 0;
+    int prev_SAD = 2147483647;
+    int best_x, best_y;
+
+    int curr_pixel = curr_frame[iy*width + ix];
+    int ref_pixel = 128; // 128? or something else
+    __shared__ int residual_frame[blockDim.x * blockDim.y];
+    for(int srch_y = -srch_range; srch_y < srch_range; srch_y++)
+    {
+        for(int srch_x = -srch_range; srch_x < srch_range; srch_x++)
+        {
+            // if pixel is with valid ref_frame range
+            if(iy+srch_y > 0 && iy+srch_y < height && ix+srch_x > 0 && ix+srch_x < width)
+                ref_pixel = ref_frame[(iy+srch_y)*width + ix+srch_x];
+
+            residual_frame[iy*width + ix] = abs(ref_pixel - curr_pixel);
+            __syncthreads();
+
+            
+            if(threadIdx.x == 0 && threadIdx.y == 0)
+            {
+                for(int i=0; i<width*height; i++)
+                    SAD += residual_frame[i];
+
+                if(SAD < prev_SAD)
+                {
+                    prev_SAD = SAD;
+                    best_x = srch_x;
+                    best_y = srch_y;
+                }
+            }
+        }
+    }
+    if(threadIdx.x == 0 && threadIdx.y == 0)
+    {
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4] = blockIdx.y * blockDim.y;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 1] = blockIdx.x * blockDim.x;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 2] = best_y;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 3] = best_x;
+    }
 
 }
 
@@ -63,7 +103,7 @@ int main( int argc, char *argv[])
     cudaMemcpy(d_ref_frame, h_ref_frame, bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_cur_frame, h_cur_frame, bytes, cudaMemcpyHostToDevice);
 
-    block_matching<<<dimGrid, dimBlock>>>(d_ref_frame, d_cur_frame, BLK_SIZE, SRC_range);
+    block_matching<<<dimGrid, dimBlock>>>(d_ref_frame, d_cur_frame, d_mv, BLK_SIZE, SRC_range);
 
     cudaDeviceSynchronize();
 
