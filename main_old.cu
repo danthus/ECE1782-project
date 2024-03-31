@@ -21,47 +21,62 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
     int ix = blockIdx.x * blockDim.x + threadIdx.x;
     int iy = blockIdx.y * blockDim.y + threadIdx.y;
 
-    int offset_x = threadIdx.x - srch_range;
-    int offset_y = threadIdx.y - srch_range;
-    int curr_idx = iy*width + ix;
-    int ref_idx = curr_idx + offset_y*width + offset_x;
     int SAD = 0;
-    if(ref_idx < 0 || ref_idx > width*height - (BLK_SIZE*width+BLK_SIZE))
-    {
-        ref_idx = curr_idx; 
-        SAD = 999999; // give large value for outsiders
-    }
+    int prev_SAD = 2147483647;
+    int best_x, best_y;
 
-    __shared__ int SAD_list[100];
-    __shared__ int mv_list[200];
+    int curr_pixel = (int) curr_frame[iy*width + ix];
+    int ref_pixel = 128; // 128? or something else
+    __shared__ int residual_frame[BLK_SIZE*BLK_SIZE];
+    
+    // for(int srch_y = -srch_range; srch_y < srch_range; srch_y++)
+    // {
+    //     for(int srch_x = -srch_range; srch_x < srch_range; srch_x++)
+    //     {
+    //         // if pixel is with valid ref_frame range
+    //         if(iy+srch_y > 0 && iy+srch_y < height && ix+srch_x > 0 && ix+srch_x < width)
+    //             ref_pixel = (int)ref_frame[(iy+srch_y)*width + ix+srch_x];
+           
+    //         printf("%d ", abs(ref_pixel - curr_pixel));
+    //         residual_frame[iy*width + ix] = abs(ref_pixel - curr_pixel);
+            
+    //         __syncthreads();
+            
+    //         if(threadIdx.x == 0 && threadIdx.y == 0)
+    //         {
+    //             printf("%hhu ", ref_pixel);
+    //             printf("%hhu ", curr_pixel);
+    //             printf("\n");
+    //             for(int i=0; i<BLK_SIZE*BLK_SIZE; i++)
+    //                 SAD += residual_frame[i];
 
-    for(int i=0; i<BLK_SIZE; i++)
-    {
-        for(int j=0; j<BLK_SIZE; j++)
-        {
-            SAD += abs((int)ref_frame[ref_idx+i*width+j] - (int)curr_frame[curr_idx+i*width+j]);
-        }
-    }
-
-    SAD_list[threadIdx.y*2*srch_range + threadIdx.x] = SAD;
-    mv_list[threadIdx.y*2*srch_range*2 + threadIdx.x*2] = offset_y;
-    mv_list[threadIdx.y*2*srch_range*2 + threadIdx.x*2+1] = offset_x;
-    __syncthreads();
+    //             if(SAD < prev_SAD)
+    //             {
+    //                 prev_SAD = SAD;
+    //                 best_x = srch_x;
+    //                 best_y = srch_y;
+    //             }
+    //         }
+    //     }
+    // }
 
     if(threadIdx.x == 0 && threadIdx.y == 0)
     {
-        int min_SAD = SAD_list[0];
-        int best_y = 0;
-        int best_x = 0; 
-        for(int k=1; k<2*srch_range*2*srch_range; k++)
+
+        int srch_y = 0;
+        int srch_x = 0;
+        if(iy+srch_y > 0 && iy+srch_y < height && ix+srch_x > 0 && ix+srch_x < width)
+            ref_pixel = (int)ref_frame[(iy+srch_y)*width + ix+srch_x];
+        
+        printf("%d ", abs(ref_pixel - curr_pixel));
+
+        if(SAD < prev_SAD)
         {
-            if(min_SAD >= SAD_list[k])
-            {
-                min_SAD = SAD_list[k];
-                best_y = mv_list[k];
-                best_x = mv_list[k+1];
-            }
+            prev_SAD = SAD;
+            best_x = srch_x;
+            best_y = srch_y;
         }
+
         mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4] = blockIdx.y * blockDim.y;
         mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 1] = blockIdx.x * blockDim.x;
         mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 2] = best_y;
@@ -119,9 +134,9 @@ int main( int argc, char *argv[])
     printf("ret = %d \n", ret);
     read_next_frame(yuv_file, h_cur_frame, frame_bytes);
 
-    for(int i=0; i < 20; i++)
-        printf("%hhu ", h_cur_frame[i]);
-    printf("\n");
+    // for(int i=0; i < 20; i++)
+    //     printf("%hhu ", h_cur_frame[i]);
+    // printf("\n");
 
     dim3 dimGrid((WIDTH+BLK_SIZE-1)/BLK_SIZE, (HEIGHT+BLK_SIZE-1)/BLK_SIZE);
     dim3 dimBlock(BLK_SIZE, BLK_SIZE);
@@ -144,9 +159,9 @@ int main( int argc, char *argv[])
 
     // do compression using h_mv
 
-    for(int i=17*44*4; i<17*44*4+64; i++)
-        printf("%d ", h_mv[i]);
-    printf("\n");
+    // for(int i=0; i<16; i++)
+    //     printf("%d ", h_mv[i]);
+    // printf("\n");
 
 
     cudaFreeHost(h_ref_frame);
