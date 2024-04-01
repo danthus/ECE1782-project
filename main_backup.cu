@@ -29,80 +29,63 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
 
     int macro_x = blockIdx.x * blockDim.x;
     int macro_y = blockIdx.y * blockDim.y;
+
+    int offset_x = threadIdx.x - srch_range;
+    int offset_y = threadIdx.y - srch_range;
+    int ref_x = macro_x+offset_x;
+    int ref_y = macro_y+offset_y;
+    int SAD = 0;
     int best_x=-99; int best_y=-99; int min_SAD=999999;
 
-    // int sub_window_count = srch_range/BLK_SIZE;
-    int sub_srch_range = blk_size/2;
+    // if(blockIdx.x ==22 && blockIdx.y==7)
+    //     printf("ref: %d, %d \n", ref_y, ref_x);
 
-    for(int sub_macro_y=macro_y-srch_range; sub_macro_y<macro_y+srch_range; sub_macro_y+=blk_size)
+    if(ref_x<0 || ref_x>width-BLK_SIZE || ref_y<0 || ref_y>height-BLK_SIZE)
     {
-        for(int sub_macro_x=macro_x-srch_range; sub_macro_x<macro_x+srch_range; sub_macro_x+=blk_size)
+        ref_x = macro_x;
+        ref_y = macro_y;
+        SAD = 999999; // give large value for outsiders
+    }
+
+    for(int i=0; i<BLK_SIZE; i++)
+    {
+        for(int j=0; j<BLK_SIZE; j++)
         {
-            // int sub_macro_x = macro_x + sub_window_x*(srch_range + blk_size/2);
-            // int sub_macro_y = macro_y + sub_window_y*(srch_range + blk_size/2);
-
-            // int offset_x = threadIdx.x;
-            // int offset_y = threadIdx.y;
-
-            int ref_x = sub_macro_x + threadIdx.x;
-            int ref_y = sub_macro_y + threadIdx.y;
-
-            int SAD = 0;
-
-            // if(blockIdx.x ==22 && blockIdx.y==7)
-            //     printf("ref: %d, %d \n", ref_y, ref_x);
-
-            if(ref_x<0 || ref_x>width-BLK_SIZE || ref_y<0 || ref_y>height-BLK_SIZE)
-            {
-                ref_x = macro_x;
-                ref_y = macro_y;
-                SAD = 999999; // give large value for outsiders
-            }
-
-            for(int i=0; i<BLK_SIZE; i++)
-            {
-                for(int j=0; j<BLK_SIZE; j++)
-                {
-                    SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
-                }
-            }
-
-            SAD_list[threadIdx.y*2*sub_srch_range + threadIdx.x] = SAD;
-            mv_list[threadIdx.y*2*sub_srch_range*2 + threadIdx.x*2] = ref_y - macro_y;
-            mv_list[threadIdx.y*2*sub_srch_range*2 + threadIdx.x*2+1] = ref_x - macro_x;
-            __syncthreads();
-
-            // if(blockIdx.x ==43 && blockIdx.y==0)
-            //     printf("ref: %d \n", SAD);
-
-            if(threadIdx.x == 0 && threadIdx.y == 0)
-            {
-                // if(blockIdx.x ==22 && blockIdx.y==7)
-                //     printf("%d %d %d \n", SAD_list[0], mv_list[0], mv_list[1]);
-
-                // min_SAD = SAD_list[0];
-                // best_y = mv_list[0];
-                // best_x = mv_list[1]; 
-                for(int k=0; k<2*sub_srch_range*2*sub_srch_range; k++)
-                {
-                    // if(blockIdx.x ==0 && blockIdx.y==0)
-                    //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
-                    if(min_SAD > SAD_list[k])
-                    {
-                        min_SAD = SAD_list[k];
-                        best_y = mv_list[2*k];
-                        best_x = mv_list[2*k+1];
-                        // if(blockIdx.x ==33 && blockIdx.y==13)
-                        //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
-                    }
-                    // if(blockIdx.x ==33 && blockIdx.y==13)
-                    //     printf(" %d %d %d \n", SAD_list[k], mv_list[2*k], mv_list[2*k+1]);
-                }
-                // if(blockIdx.x ==22 && blockIdx.y==7)
-                //     printf("\n best y %d, best x %d \n", best_y, best_x);
-            }
-            __syncthreads();
+            SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
         }
+    }
+
+    SAD_list[threadIdx.y*2*srch_range + threadIdx.x] = SAD;
+    mv_list[threadIdx.y*2*srch_range*2 + threadIdx.x*2] = offset_y;
+    mv_list[threadIdx.y*2*srch_range*2 + threadIdx.x*2+1] = offset_x;
+    __syncthreads();
+
+    // if(blockIdx.x ==43 && blockIdx.y==0)
+    //     printf("ref: %d \n", SAD);
+
+    if(threadIdx.x == 0 && threadIdx.y == 0)
+    {
+        // if(blockIdx.x ==22 && blockIdx.y==7)
+        //     printf("%d %d %d \n", SAD_list[0], mv_list[0], mv_list[1]);
+
+        // int min_SAD = SAD_list[0];
+        // best_y = mv_list[0];
+        // best_x = mv_list[1]; 
+        for(int k=0; k<2*srch_range*2*srch_range; k++)
+        {
+            // if(blockIdx.x ==22 && blockIdx.y==7)
+            //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
+            if(min_SAD >= SAD_list[k])
+            {
+                min_SAD = SAD_list[k];
+                best_y = mv_list[2*k];
+                best_x = mv_list[2*k+1];
+            }
+            if(blockIdx.x ==0 && blockIdx.y==0)
+                printf(" %d %d %d \n", SAD_list[k], mv_list[2*k], mv_list[2*k+1]);
+        }
+        // if(blockIdx.x ==22 && blockIdx.y==7)
+        //     printf("\n best y %d, best x %d \n", best_y, best_x);
     }
 
     if(threadIdx.x == 0 && threadIdx.y == 0)
@@ -139,7 +122,7 @@ void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int w
                         // if(macro_x == 96 && macro_y == 0)
                         //     printf("%d %d %d\n", SAD, ref_y, ref_x);
 
-                        if(minSAD > SAD)
+                        if(minSAD >= SAD)
                         {
                             minSAD = SAD;
                             best_x = ref_x - macro_x;
@@ -159,48 +142,14 @@ void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int w
     }
 }
 
-bool compare_SAD(uint8_t* ref_frame, uint8_t* curr_frame, int macro_y, int macro_x, int mv1_y, int mv1_x, int mv2_y, int mv2_x, int width)
-{
-    int SAD1 = 0; int SAD2 = 0;
-    int ref1_y = macro_y + mv1_y;
-    int ref1_x = macro_x + mv1_x;
-    int ref2_y = macro_y + mv2_y;
-    int ref2_x = macro_x + mv2_x;
-
-    for(int i=0; i<BLK_SIZE; i++)
-    {
-        for(int j=0; j<BLK_SIZE; j++)
-        {
-            SAD1 += abs((int)ref_frame[ref1_y*width+ref1_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
-        }
-    }
-
-    for(int i=0; i<BLK_SIZE; i++)
-    {
-        for(int j=0; j<BLK_SIZE; j++)
-        {
-            SAD2 += abs((int)ref_frame[ref2_y*width+ref2_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
-        }
-    }
-
-    if(SAD1 == SAD2)
-        return 1;
-    
-    return 0;
-}
-
-bool compare_mv(uint8_t* ref_frame, uint8_t* curr_frame, int* mv1, int* mv2, size_t len, int width)
+bool compare_mv(int* mv1, int* mv2, size_t len)
 {
     for(int i=0; i<len; i++)
     {
         if(mv1[i] != mv2[i])
         {
-            int idx = i/4;
-            if(compare_SAD(ref_frame, curr_frame, mv1[idx], mv1[idx+1], mv1[idx+2], mv1[idx+3], mv2[idx+2], mv2[idx+3], width))
-                continue;
-            else
-                printf("Error in mv: index %d, value1: %d, value2: %d \n", i, mv1[i], mv2[2]);
-                return 0;
+            printf("Error in mv: index %d, value1: %d, value2: %d \n", i, mv1[i], mv2[2]);
+            return 0;
         }
     }
     return 1;
@@ -254,7 +203,7 @@ int main( int argc, char *argv[])
     gpuErrchk(cudaMallocHost((void **)&h_h_mv, vector_bytes));
 
     int ret = read_next_frame(yuv_file, h_ref_frame, frame_bytes);
-    // printf("ret = %d \n", ret);
+    printf("ret = %d \n", ret);
     read_next_frame(yuv_file, h_cur_frame, frame_bytes);
 
     // for(int i=0; i < 20; i++)
@@ -265,7 +214,7 @@ int main( int argc, char *argv[])
     dim3 dimBlock(BLK_SIZE, BLK_SIZE);
 
     // Device memory allocation
-    double GPU_start_time=getTimeStamp();
+    double start_time=getTimeStamp();
 
     uint8_t *d_ref_frame, *d_cur_frame;
     int *d_mv;
@@ -281,23 +230,19 @@ int main( int argc, char *argv[])
     cudaDeviceSynchronize();
 
     cudaMemcpy(h_d_mv, d_mv, vector_bytes, cudaMemcpyDeviceToHost);
-    double GPU_end_time=getTimeStamp();
+    double end_time=getTimeStamp();
 
     // do compression using h_mv
 
     // CPU GPU check ////////////
-    double CPU_start_time=getTimeStamp();
     host_block_matching(h_ref_frame, h_cur_frame, h_h_mv, WIDTH, HEIGHT, BLK_SIZE, SRC_range);
-    double CPU_end_time=getTimeStamp();
-    if(compare_mv(h_ref_frame, h_cur_frame, h_h_mv, h_d_mv, vector_size, WIDTH))
+    if(compare_mv(h_h_mv, h_d_mv, vector_size))
         printf("CPU GPU check success\n");
     else
         printf("CPU GPU check failed\n");
         
-    float GPU_total_time_ms =(GPU_end_time-GPU_start_time)*1000;
-    float CPU_total_time_ms =(CPU_end_time-CPU_start_time)*1000;
-    printf("GPU time: %.4f ms\n", GPU_total_time_ms);
-    printf("CPU time: %.4f ms\n", CPU_total_time_ms);
+    int total_time_ms =(int)ceil((end_time-start_time)*1000);
+    printf("time: %d ms\n", total_time_ms);
     /////////////////////////////
 
     for(int i=0; i<32; i++)
