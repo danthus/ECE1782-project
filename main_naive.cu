@@ -58,19 +58,19 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
             // if(blockIdx.x ==8 && blockIdx.y==0)
             //     printf("macro: %d %d %d %d\n", macro_y, macro_x, ref_y, ref_x);
 
-            if(ref_x<0 || ref_x>width-BLK_SIZE || ref_y<0 || ref_y>height-BLK_SIZE)
-            {
-                ref_x = macro_x;
-                ref_y = macro_y;
-                SAD = 999999; // give large value for outsiders
-            }
-
 
             for(int i=0; i<BLK_SIZE; i++)
             {
                 for(int j=0; j<BLK_SIZE; j++)
                 {
-                    SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
+                    if(ref_x>=0 && ref_x<=width-BLK_SIZE && ref_y>=0 && ref_y<=height-BLK_SIZE)
+                    {
+                        SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
+                    }
+                    else
+                    {
+                        SAD = -1;
+                    }
                 }
             }
 
@@ -91,7 +91,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
                 {
                     // if(blockIdx.x ==0 && blockIdx.y==0)
                     //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
-                    if(min_SAD > SAD_list[k])
+                    if(min_SAD > SAD_list[k] && SAD_list[k]!=-1)
                     {
                         min_SAD = SAD_list[k];
                         best_y = mv_list[2*k];
