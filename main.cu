@@ -81,7 +81,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
 
             if(threadIdx.x == 0 && threadIdx.y == 0)
             {
-                // if(blockIdx.x ==22 && blockIdx.y==7)
+                // if(blockIdx.x ==39 && blockIdx.y==46)
                 //     printf("%d %d %d \n", SAD_list[0], mv_list[0], mv_list[1]);
 
                 // min_SAD = SAD_list[0];
@@ -99,8 +99,8 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
                         // if(blockIdx.x ==33 && blockIdx.y==13)
                         //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
                     }
-                    // if(blockIdx.x ==8 && blockIdx.y==0)
-                    //     printf(" %d %d %d \n", SAD_list[k], mv_list[2*k], mv_list[2*k+1]);
+                    // if(blockIdx.x ==39 && blockIdx.y==46)
+                    //     printf("%d %d %d %d %d %d\n", macro_y, macro_x, SAD_list[k], mv_list[2*k], mv_list[2*k+1], min_SAD);
                 }
                 // if(blockIdx.x ==22 && blockIdx.y==7)
                 //     printf("\n best y %d, best x %d \n", best_y, best_x);
@@ -141,8 +141,8 @@ void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int w
                                 //     break;
                         }
 
-                        // if(macro_x == 32 && macro_y == 0)
-                        //     printf("host: %d %d %d\n", SAD, ref_y, ref_x);
+                        // if(macro_x == 156 && macro_y == 184)
+                        //     printf("host: %d %d %d\n", SAD, ref_y-macro_y, ref_x-macro_x);
 
                         if(minSAD > SAD)
                         {
@@ -191,6 +191,8 @@ bool compare_SAD(uint8_t* ref_frame, uint8_t* curr_frame, int macro_y, int macro
     if(SAD1 == SAD2)
         return 1;
     
+    printf("%d %d ,SAD1: %d, SAD2: %d\n", macro_y, macro_x,SAD1, SAD2);
+
     return 0;
 }
 
@@ -201,10 +203,13 @@ bool compare_mv(uint8_t* ref_frame, uint8_t* curr_frame, int* mv1, int* mv2, siz
         if(mv1[i] != mv2[i])
         {
             int idx = i/4;
+            idx = idx * 4;
+            // if(i==16350)
+            //     printf("i: %d %d %d %d \n", mv1[idx], mv1[idx+1], mv1[idx+2], mv1[idx+3]);
             if(compare_SAD(ref_frame, curr_frame, mv1[idx], mv1[idx+1], mv1[idx+2], mv1[idx+3], mv2[idx+2], mv2[idx+3], width, BLK_SIZE))
                 continue;
             else
-                printf("Error in mv: index %d, value1: %d, value2: %d \n", i, mv1[i], mv2[2]);
+                printf("Error in mv: index %d, value1: %d, value2: %d \n", i, mv1[i], mv2[i]);
                 return 0;
         }
     }
@@ -212,10 +217,27 @@ bool compare_mv(uint8_t* ref_frame, uint8_t* curr_frame, int* mv1, int* mv2, siz
 }
 
 
-bool read_next_frame(FILE* yuv_file, uint8_t* frame_buffer, size_t frame_bytes)
+bool read_next_frame(FILE* yuv_file, uint8_t* frame_buffer, size_t WIDTH, size_t HEIGHT, size_t WIDTH_PAD)
 {
-    size_t result;
-    result = fread(frame_buffer, 1, frame_bytes, yuv_file);
+    // assume frame_buffer is allocated to correct size and filled with 128
+    // uint8_t* temp_buffer = (uint8_t *)malloc(frame_bytes);
+    size_t result = 0;
+    size_t idx = 0;
+    size_t frame_bytes = WIDTH*HEIGHT*sizeof(uint8_t);
+
+    if(WIDTH==WIDTH_PAD) // no padding needed
+    {
+        result = fread(frame_buffer, 1, frame_bytes, yuv_file);
+    }
+    else // need padding
+    {
+        for(int i=0; i<HEIGHT; i++)
+        {
+            idx = i * WIDTH_PAD;
+            result += fread((frame_buffer + idx), 1, WIDTH, yuv_file);
+        }
+    }
+
     fseek(yuv_file, frame_bytes/2, SEEK_CUR); // skip U, V components
     if (result == frame_bytes) 
         return 1;
@@ -236,12 +258,19 @@ int main( int argc, char *argv[])
     int BLK_SIZE = atoi(argv[3]);
     int SRC_range = atoi(argv[4]);
 
+    // padding handling
+    int WIDTH_PAD = (WIDTH + BLK_SIZE - 1)/BLK_SIZE;
+    int HEIGHT_PAD = (HEIGHT + BLK_SIZE - 1)/BLK_SIZE;
+    WIDTH_PAD = WIDTH_PAD * BLK_SIZE;
+    HEIGHT_PAD = HEIGHT_PAD * BLK_SIZE;
+
     // video file preprocess
 
-    // !!!no padding right now, need to handle it!!!
-    size_t pixels = WIDTH*HEIGHT;
-    size_t frame_bytes = pixels*sizeof(uint8_t);
-    size_t vector_size = 4*(pixels/BLK_SIZE/BLK_SIZE); // format: y x mv_y mv_x ...
+    size_t pixels_pad = WIDTH_PAD*HEIGHT_PAD;
+    // size_t pixels = WIDTH*HEIGHT;
+    // size_t frame_bytes = pixels*sizeof(uint8_t);
+    size_t frame_bytes_pad = pixels_pad*sizeof(uint8_t);
+    size_t vector_size = 4*(pixels_pad/BLK_SIZE/BLK_SIZE); // format: y x mv_y mv_x ...
     size_t vector_bytes = vector_size*sizeof(int);
 
     // process frame
@@ -253,14 +282,14 @@ int main( int argc, char *argv[])
     // Host memory allocation
     uint8_t *h_ref_frame, *h_cur_frame;
     int *h_d_mv; int *h_h_mv;
-    gpuErrchk(cudaMallocHost((void **)&h_ref_frame, frame_bytes));
-    gpuErrchk(cudaMallocHost((void **)&h_cur_frame, frame_bytes));
+    gpuErrchk(cudaMallocHost((void **)&h_ref_frame, frame_bytes_pad));
+    gpuErrchk(cudaMallocHost((void **)&h_cur_frame, frame_bytes_pad));
     gpuErrchk(cudaMallocHost((void **)&h_d_mv, vector_bytes));
     gpuErrchk(cudaMallocHost((void **)&h_h_mv, vector_bytes));
 
-    int ret = read_next_frame(yuv_file, h_ref_frame, frame_bytes);
+    int ret = read_next_frame(yuv_file, h_ref_frame, WIDTH, HEIGHT, WIDTH_PAD);
     // printf("ret = %d \n", ret);
-    read_next_frame(yuv_file, h_cur_frame, frame_bytes);
+    read_next_frame(yuv_file, h_cur_frame, WIDTH, HEIGHT, WIDTH_PAD);
 
     // for(int i=0; i < 20; i++)
     //     printf("%hhu ", h_cur_frame[i]);
@@ -274,14 +303,14 @@ int main( int argc, char *argv[])
 
     uint8_t *d_ref_frame, *d_cur_frame;
     int *d_mv;
-    cudaMalloc((void **)&d_ref_frame, frame_bytes);
-    cudaMalloc((void **)&d_cur_frame, frame_bytes);
+    cudaMalloc((void **)&d_ref_frame, frame_bytes_pad);
+    cudaMalloc((void **)&d_cur_frame, frame_bytes_pad);
     cudaMalloc((void **)&d_mv, vector_bytes);
 
-    cudaMemcpy(d_ref_frame, h_ref_frame, frame_bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_cur_frame, h_cur_frame, frame_bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ref_frame, h_ref_frame, frame_bytes_pad, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_cur_frame, h_cur_frame, frame_bytes_pad, cudaMemcpyHostToDevice);
 
-    block_matching<<<dimGrid, dimBlock>>>(d_ref_frame, d_cur_frame, d_mv, WIDTH, HEIGHT, BLK_SIZE, SRC_range);
+    block_matching<<<dimGrid, dimBlock>>>(d_ref_frame, d_cur_frame, d_mv, WIDTH_PAD, HEIGHT_PAD, BLK_SIZE, SRC_range);
 
     cudaDeviceSynchronize();
 
@@ -292,9 +321,9 @@ int main( int argc, char *argv[])
 
     // CPU GPU check ////////////
     double CPU_start_time=getTimeStamp();
-    host_block_matching(h_ref_frame, h_cur_frame, h_h_mv, WIDTH, HEIGHT, BLK_SIZE, SRC_range);
+    host_block_matching(h_ref_frame, h_cur_frame, h_h_mv, WIDTH_PAD, HEIGHT_PAD, BLK_SIZE, SRC_range);
     double CPU_end_time=getTimeStamp();
-    if(compare_mv(h_ref_frame, h_cur_frame, h_h_mv, h_d_mv, vector_size, WIDTH, BLK_SIZE))
+    if(compare_mv(h_ref_frame, h_cur_frame, h_h_mv, h_d_mv, vector_size, WIDTH_PAD, BLK_SIZE))
         printf("CPU GPU check success\n");
     else
         printf("CPU GPU check failed\n");
@@ -305,11 +334,12 @@ int main( int argc, char *argv[])
     printf("CPU time: %.4f ms\n", CPU_total_time_ms);
     /////////////////////////////
 
-    for(int i=32; i<32+32; i++)
+    int start = 0;
+    for(int i=start; i<start+32; i++)
         printf("%d ", h_d_mv[i]);
     printf("\n");
 
-    for(int i=32; i<32+32; i++)
+    for(int i=start; i<start+32; i++)
         printf("%d ", h_h_mv[i]);
     printf("\n");
 
