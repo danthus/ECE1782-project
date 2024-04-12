@@ -103,15 +103,16 @@ bool read_next_frame(FILE* yuv_file, uint8_t* frame_buffer, size_t WIDTH, size_t
 // usage: main.cu <video file> <WIDTH> <HEIGHT> <BLK_size> <search range>
 int main( int argc, char *argv[])
 {
-    if( argc != 5) {
+    if( argc != 6) {
         printf( "Error: wrong number of args\n");
         exit(1);
     }
     
-    int WIDTH = atoi(argv[1]);
-    int HEIGHT = atoi(argv[2]);
-    int BLK_SIZE = atoi(argv[3]);
-    int SRC_range = atoi(argv[4]);
+    char* file_name = argv[1];
+    int WIDTH = atoi(argv[2]);
+    int HEIGHT = atoi(argv[3]);
+    int BLK_SIZE = atoi(argv[4]);
+    int SRC_range = atoi(argv[5]);
 
     // padding handling
     int WIDTH_PAD = (WIDTH + BLK_SIZE - 1)/BLK_SIZE;
@@ -130,7 +131,7 @@ int main( int argc, char *argv[])
 
     // process frame
     FILE* yuv_file;
-    yuv_file = fopen("../CIF.yuv", "rb");
+    yuv_file = fopen(file_name, "rb");
     if(yuv_file==NULL) {printf("Error: NULL file \n");exit(0);}
     rewind(yuv_file);
 
