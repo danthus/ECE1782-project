@@ -80,7 +80,8 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
             mv_list[threadIdx.y*2*sub_srch_range*2 + threadIdx.x*2+1] = ref_x - macro_x;
             __syncthreads();              
 
-            for(int s = 2*sub_srch_range*2*sub_srch_range / 2; s > 0; s >>= 1) 
+            int s = 2*sub_srch_range*2*sub_srch_range / 2;
+            for(; s > 32; s >>= 1) 
             {
                 if(tid < s) 
                 {
@@ -91,6 +92,57 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
                     }
                 }
                 __syncthreads();
+            }
+
+            if(s >= 32)
+            {
+                if(tid < 32)
+                {
+                    if(SAD_list[tid] > SAD_list[tid + 32])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 32];
+                        SAD_indexs[tid] = SAD_indexs[tid + 32]; 
+                    }
+                }
+            }
+
+            if(s >= 16)
+            {
+                if(tid < 16)
+                {
+                    if(SAD_list[tid] > SAD_list[tid + 16])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 16];
+                        SAD_indexs[tid] = SAD_indexs[tid + 16]; 
+                    }
+                }
+            }
+
+            if(s >= 8)
+            {
+                if(tid < 8)
+                {
+                    if(SAD_list[tid] > SAD_list[tid + 8])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 8];
+                        SAD_indexs[tid] = SAD_indexs[tid + 8]; 
+                    }
+                    if(SAD_list[tid] > SAD_list[tid + 4])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 4];
+                        SAD_indexs[tid] = SAD_indexs[tid + 4]; 
+                    }
+                    if(SAD_list[tid] > SAD_list[tid + 2])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 2];
+                        SAD_indexs[tid] = SAD_indexs[tid + 2]; 
+                    }
+                    if(SAD_list[tid] > SAD_list[tid + 1])
+                    {
+                        SAD_list[tid] = SAD_list[tid + 1];
+                        SAD_indexs[tid] = SAD_indexs[tid + 1]; 
+                    }
+                }
             }
 
             if(min_SAD > SAD_list[0])

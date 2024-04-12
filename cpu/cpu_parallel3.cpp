@@ -16,33 +16,37 @@ double getTimeStamp() {
 
 void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int width, int height, int BLK_SIZE, int srch_range)
 {
-    int SAD, minSAD, best_x, best_y;
+    int minSAD, best_x, best_y;
     int SAD_list[1024];
     int mv_list[2048];
     int val;
+    int SAD;
 
-    // #pragma omp parallel for
-    for(int macro_y=0; macro_y < height; macro_y+=BLK_SIZE)
+    int macro_y, macro_x, ref_y, ref_x, i, j;
+
+    #pragma omp parallel for private(macro_y, macro_x, ref_y, ref_x, i, j, SAD, minSAD, best_x, best_y) 
+    for(macro_y=0; macro_y < height; macro_y+=BLK_SIZE)
     {
-        for(int macro_x=0; macro_x < width; macro_x+=BLK_SIZE)
+        for(macro_x=0; macro_x < width; macro_x+=BLK_SIZE)
         {
             minSAD = 99999;
-            for(int ref_y=macro_y-srch_range; ref_y < macro_y+srch_range; ref_y++)
+            for(ref_y=macro_y-srch_range; ref_y < macro_y+srch_range; ref_y++)
             {
-                for(int ref_x=macro_x-srch_range; ref_x < macro_x+srch_range; ref_x++)
+                // #pragma omp parallel for private(ref_x)
+                for(ref_x=macro_x-srch_range; ref_x < macro_x+srch_range; ref_x++)
                 {
                     if(ref_x>=0 && ref_x<=width-BLK_SIZE && ref_y>=0 && ref_y<=height-BLK_SIZE)
                     {
                         SAD = 0;
 
-                        for(int i=0; i<BLK_SIZE; i++)
+                        for(i=0; i<BLK_SIZE; i++)
                         {
-                            for(int j=0; j<BLK_SIZE; j++)
+                            for(j=0; j<BLK_SIZE; j++)
                             {
                                 SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
                             }
-                            // if(SAD >= minSAD)
-                            //     break;
+                            if(SAD >= minSAD)
+                                break;
                         }
 
                         // if(macro_x == 156 && macro_y == 184)
