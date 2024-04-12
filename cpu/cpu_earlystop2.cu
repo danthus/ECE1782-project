@@ -30,7 +30,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
 
     int macro_x = blockIdx.x * blockDim.x;
     int macro_y = blockIdx.y * blockDim.y;
-    int best_x=-99; int best_y=-99; int min_SAD=9999999;
+    int best_x=-99; int best_y=-99; int min_SAD=999999;
 
     // if(blockIdx.x ==0 && blockIdx.y==0)
     //     printf("macro: %d %d %d\n", macro_x, blockIdx.y, blockIdx.x);
@@ -56,7 +56,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
             // if(blockIdx.x ==22 && blockIdx.y==7)
             //     printf("ref: %d, %d \n", ref_y, ref_x);
 
-            // if(blockIdx.x ==119 && blockIdx.y==66)
+            // if(blockIdx.x ==8 && blockIdx.y==0)
             //     printf("macro: %d %d %d %d\n", macro_y, macro_x, ref_y, ref_x);
 
             if(ref_x<0 || ref_x>width-BLK_SIZE || ref_y<0 || ref_y>height-BLK_SIZE)
@@ -74,9 +74,6 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
                     SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
                 }
             }
-
-            // if(blockIdx.x ==119 && blockIdx.y==66)
-            //     printf("macro: %d %d %d %d %d\n", macro_y, macro_x, ref_y, ref_x, SAD);
 
             SAD_list[threadIdx.y*2*sub_srch_range + threadIdx.x] = SAD;
             mv_list[threadIdx.y*2*sub_srch_range*2 + threadIdx.x*2] = ref_y - macro_y;
@@ -103,7 +100,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
                         // if(blockIdx.x ==33 && blockIdx.y==13)
                         //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
                     }
-                    // if(blockIdx.x ==15 && blockIdx.y==3)
+                    // if(blockIdx.x ==39 && blockIdx.y==46)
                     //     printf("%d %d %d %d %d %d\n", macro_y, macro_x, SAD_list[k], mv_list[2*k], mv_list[2*k+1], min_SAD);
                 }
                 // if(blockIdx.x ==22 && blockIdx.y==7)
@@ -115,15 +112,10 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
 
     if(threadIdx.x == 0 && threadIdx.y == 0)
     {
-        size_t idx = blockIdx.y*gridDim.x*4 + blockIdx.x*4;
-        // mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4] = macro_y;
-        // mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 1] = macro_x;
-        // mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 2] = best_y;
-        // mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 3] = best_x;
-        mv[idx] = macro_y;
-        mv[idx + 1] = macro_x;
-        mv[idx + 2] = best_y;
-        mv[idx + 3] = best_x;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4] = macro_y;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 1] = macro_x;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 2] = best_y;
+        mv[blockIdx.y*gridDim.x*4 + blockIdx.x*4 + 3] = best_x;
     }
 }
 
@@ -134,7 +126,7 @@ void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int w
     {
         for(int macro_x=0; macro_x < width; macro_x+=BLK_SIZE)
         {
-            minSAD = 9999999;
+            minSAD = 99999;
             for(int ref_y=macro_y-srch_range; ref_y < macro_y+srch_range; ref_y++)
             {
                 for(int ref_x=macro_x-srch_range; ref_x < macro_x+srch_range; ref_x++)
@@ -143,15 +135,18 @@ void host_block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int w
                     {
                         SAD = 0;
 
-                        for(int i=0; i<BLK_SIZE*BLK_SIZE; i++)
+                        for(int i=0; i<BLK_SIZE; i++)
                         {
-                                SAD += abs((int)ref_frame[ref_y*width+ref_x + (i/BLK_SIZE)*width+i%BLK_SIZE] - (int)curr_frame[macro_y*width+macro_x + (i/BLK_SIZE)*width+i%BLK_SIZE]);
-                                // if(SAD >= minSAD)
-                                //     break;
+                            for(int j=0; j<BLK_SIZE; j++)
+                            {
+                                SAD += abs((int)ref_frame[ref_y*width+ref_x + i*width+j] - (int)curr_frame[macro_y*width+macro_x + i*width+j]);
+                            }
+                            if(SAD >= minSAD)
+                                break;
                         }
 
-                        // if(macro_x == 480 && macro_y == 96)
-                        //     printf("host: %d %d %d %d\n", SAD, ref_y-macro_y, ref_x-macro_x, minSAD);
+                        // if(macro_x == 156 && macro_y == 184)
+                        //     printf("host: %d %d %d\n", SAD, ref_y-macro_y, ref_x-macro_x);
 
                         if(minSAD > SAD)
                         {
@@ -257,16 +252,15 @@ bool read_next_frame(FILE* yuv_file, uint8_t* frame_buffer, size_t WIDTH, size_t
 // usage: main.cu <video file> <WIDTH> <HEIGHT> <BLK_size> <search range>
 int main( int argc, char *argv[])
 {
-    if( argc != 6) {
+    if( argc != 5) {
         printf( "Error: wrong number of args\n");
         exit(1);
     }
     
-    char* file_name = argv[1];
-    int WIDTH = atoi(argv[2]);
-    int HEIGHT = atoi(argv[3]);
-    int BLK_SIZE = atoi(argv[4]);
-    int SRC_range = atoi(argv[5]);
+    int WIDTH = atoi(argv[1]);
+    int HEIGHT = atoi(argv[2]);
+    int BLK_SIZE = atoi(argv[3]);
+    int SRC_range = atoi(argv[4]);
 
     // padding handling
     int WIDTH_PAD = (WIDTH + BLK_SIZE - 1)/BLK_SIZE;
@@ -275,7 +269,6 @@ int main( int argc, char *argv[])
     HEIGHT_PAD = HEIGHT_PAD * BLK_SIZE;
 
     // video file preprocess
-    printf("WIDTH_PAD: %d, HEIGHT_PAD: %d \n", WIDTH_PAD, HEIGHT_PAD);
 
     size_t pixels_pad = WIDTH_PAD*HEIGHT_PAD;
     // size_t pixels = WIDTH*HEIGHT;
@@ -286,7 +279,7 @@ int main( int argc, char *argv[])
 
     // process frame
     FILE* yuv_file;
-    yuv_file = fopen(file_name, "rb");
+    yuv_file = fopen("../CIF.yuv", "rb");
     if(yuv_file==NULL) {printf("Error: NULL file \n");exit(0);}
     rewind(yuv_file);
 
@@ -294,9 +287,7 @@ int main( int argc, char *argv[])
     uint8_t *h_ref_frame, *h_cur_frame;
     int *h_d_mv; int *h_h_mv;
     gpuErrchk(cudaMallocHost((void **)&h_ref_frame, frame_bytes_pad));
-    memset(h_ref_frame, 128, frame_bytes_pad);
     gpuErrchk(cudaMallocHost((void **)&h_cur_frame, frame_bytes_pad));
-    memset(h_cur_frame, 128, frame_bytes_pad);
     gpuErrchk(cudaMallocHost((void **)&h_d_mv, vector_bytes));
     gpuErrchk(cudaMallocHost((void **)&h_h_mv, vector_bytes));
 
@@ -308,7 +299,7 @@ int main( int argc, char *argv[])
     //     printf("%hhu ", h_cur_frame[i]);
     // printf("\n");
 
-    dim3 dimGrid((WIDTH_PAD)/BLK_SIZE, (HEIGHT_PAD)/BLK_SIZE);
+    dim3 dimGrid((WIDTH)/BLK_SIZE, (HEIGHT)/BLK_SIZE);
     dim3 dimBlock(BLK_SIZE, BLK_SIZE);
 
     // Device memory allocation

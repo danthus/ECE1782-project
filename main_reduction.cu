@@ -26,8 +26,10 @@ double getTimeStamp() {
 __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv, int width, int height, int BLK_SIZE, int srch_range)
 {
     __shared__ int SAD_list[1024];
+    __shared__ uint16_t SAD_indexs[1024];
     __shared__ int mv_list[2048];
 
+    int tid = threadIdx.y * blockDim.x + threadIdx.x;
     int macro_x = blockIdx.x * blockDim.x;
     int macro_y = blockIdx.y * blockDim.y;
     int best_x=-99; int best_y=-99; int min_SAD=9999999;
@@ -42,12 +44,7 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
     {
         for(int sub_macro_x=macro_x-srch_range; sub_macro_x<macro_x+srch_range; sub_macro_x+=BLK_SIZE)
         {
-            // int sub_macro_x = macro_x + sub_window_x*(srch_range + blk_size/2);
-            // int sub_macro_y = macro_y + sub_window_y*(srch_range + blk_size/2);
-
-            // int offset_x = threadIdx.x;
-            // int offset_y = threadIdx.y;
-
+            SAD_indexs[tid] = tid;
             int ref_x = sub_macro_x + threadIdx.x;
             int ref_y = sub_macro_y + threadIdx.y;
 
@@ -83,33 +80,61 @@ __global__ void block_matching(uint8_t* ref_frame, uint8_t* curr_frame, int* mv,
             mv_list[threadIdx.y*2*sub_srch_range*2 + threadIdx.x*2+1] = ref_x - macro_x;
             __syncthreads();
 
-            if(threadIdx.x == 0 && threadIdx.y == 0)
-            {
-                // if(blockIdx.x ==39 && blockIdx.y==46)
-                //     printf("%d %d %d \n", SAD_list[0], mv_list[0], mv_list[1]);
+            // if(threadIdx.x == 0 && threadIdx.y == 0)
+            // {
+            //     // if(blockIdx.x ==39 && blockIdx.y==46)
+            //     //     printf("%d %d %d \n", SAD_list[0], mv_list[0], mv_list[1]);
 
-                // min_SAD = SAD_list[0];
-                // best_y = mv_list[0];
-                // best_x = mv_list[1]; 
-                for(int k=0; k<2*sub_srch_range*2*sub_srch_range; k++)
+            //     // min_SAD = SAD_list[0];
+            //     // best_y = mv_list[0];
+            //     // best_x = mv_list[1]; 
+            //     for(int k=0; k<2*sub_srch_range*2*sub_srch_range; k++)
+            //     {
+            //         // if(blockIdx.x ==0 && blockIdx.y==0)
+            //         //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
+            //         if(min_SAD > SAD_list[k])
+            //         {
+            //             min_SAD = SAD_list[k];
+            //             best_y = mv_list[2*k];
+            //             best_x = mv_list[2*k+1];
+            //             // if(blockIdx.x ==33 && blockIdx.y==13)
+            //             //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
+            //         }
+            //         // if(blockIdx.x ==15 && blockIdx.y==3)
+            //         //     printf("%d %d %d %d %d %d\n", macro_y, macro_x, SAD_list[k], mv_list[2*k], mv_list[2*k+1], min_SAD);
+            //     }
+            //     // if(blockIdx.x ==22 && blockIdx.y==7)
+            //     //     printf("\n best y %d, best x %d \n", best_y, best_x);
+            // }
+
+            // if(threadIdx.x == 0 && threadIdx.y == 0)
+            // {
+            //     for(int k=0; k<2*sub_srch_range*2*sub_srch_range; k++)
+            //     {
+            //         if(blockIdx.x ==1 && blockIdx.y==0)
+            //             printf("%d %d %d %d\n", SAD_indexs[k], SAD_list[k], mv_list[2*k], mv_list[2*k+1]);
+            //     }
+            // }            
+
+            for(int s = 2*sub_srch_range*2*sub_srch_range / 2; s > 0; s >>= 1) 
+            {
+                if(tid < s) 
                 {
-                    // if(blockIdx.x ==0 && blockIdx.y==0)
-                    //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
-                    if(min_SAD > SAD_list[k])
+                    if(SAD_list[tid] > SAD_list[tid + s])
                     {
-                        min_SAD = SAD_list[k];
-                        best_y = mv_list[2*k];
-                        best_x = mv_list[2*k+1];
-                        // if(blockIdx.x ==33 && blockIdx.y==13)
-                        //     printf(" minSAD %d %d %d \n", min_SAD, best_y, best_x);
+                        SAD_list[tid] = SAD_list[tid + s];
+                        SAD_indexs[tid] = SAD_indexs[tid + s];
                     }
-                    // if(blockIdx.x ==15 && blockIdx.y==3)
-                    //     printf("%d %d %d %d %d %d\n", macro_y, macro_x, SAD_list[k], mv_list[2*k], mv_list[2*k+1], min_SAD);
                 }
-                // if(blockIdx.x ==22 && blockIdx.y==7)
-                //     printf("\n best y %d, best x %d \n", best_y, best_x);
             }
             __syncthreads();
+
+            if(min_SAD > SAD_list[0])
+            {
+                min_SAD = SAD_list[0];
+                best_y = mv_list[SAD_indexs[0]*2];
+                best_x = mv_list[SAD_indexs[0]*2 + 1];
+            }
         }
     }
 
