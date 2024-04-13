@@ -7,6 +7,7 @@ main_reduction4.cu, unroll the last few loops in the reduction loop
 main_shrd5.cu, move the current block in the SAD summation process to shared memory.
 
 usage: ./a.out ***.yuv <width> <height> <block size> <search range>
+
 examples:
   nvcc main_xxxx.cu
   ./a.out test.yuv 1920 1080 8 8 
