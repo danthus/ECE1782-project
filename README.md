@@ -9,6 +9,7 @@ main_shrd5.cu, move the current block in the SAD summation process to shared mem
 usage: ./a.out ***.yuv <width> <height> <block size> <search range>
 
 examples:
+
   nvcc main_xxxx.cu
   ./a.out test.yuv 1920 1080 8 8 
   ./a.out test_720p.yuv 1280 720 4 16
