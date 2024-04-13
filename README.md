@@ -17,6 +17,8 @@ test_720p.yuv, contains 10 frames of a 1280x720 resolution video
 
 CIF.yuv, contains 10 frames of a 352x288 resolution video
 
+read_yuv_test.cu, contains test code for reading yuv frames into buffer
+
 usage: 
 
     ./a.out <yuv file> <width> <height> <block size> <search range>
